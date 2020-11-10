@@ -32,7 +32,7 @@ def create_TAP(id):
 
 
 def create_batman_interface(id):
-    result = os.system("sudo ip netns exec host{} batctl if add tap{}".format(id, id))
+    result = os.system("ip netns exec host{} batctl if add tap{}".format(id, id))
 
     if result != 0:
         print("Failed to create BAT interface for id: {}. Aborting!".format(id))
@@ -51,12 +51,25 @@ def create_batman_interface(id):
         exit()
 
 
+def set_hop_penalty(id, penalty):
+    result = os.system("ip netns exec host{} batctl meshif bat0 hop_penalty {}".format(id, penalty))
+
+    if result !=0:
+        print("Failed to set hop penalty for id: {}. Aborting!".format(id))
+        exit()
+
+def set_ogm_interval(id, interval):
+    result = os.system("ip netns exec host{} batctl meshif bat0 orig_interval {}".format(id, interval))
+
+    if result !=0:
+        print("Failed to set ogm interval for id: {}. Aborting!".format(id))
+        exit()
+
+
 def cleanup():
     stream = os.popen('ip netns')
 
     hosts = stream.readlines()
-
-
 
     print("Host to be cleaned up:")
     for h in hosts:
@@ -85,7 +98,8 @@ def main():
     parser.add_argument('--cleanup', action='store_true', default=False)
     parser.add_argument('--nhosts', action='store', type=int)
     parser.add_argument('--batv', action='store_true', default=False)
-
+    parser.add_argument('--hop_penalty', action='store', type=int)
+    parser.add_argument('--ogm_interval', action='store', type=int)
 
     arguments = parser.parse_args()
 
@@ -107,6 +121,11 @@ def main():
             create_namespace(i)
             create_TAP(i)
             create_batman_interface(i)
+
+            if arguments.hop_penalty:
+                set_hop_penalty(i, arguments.hop_penalty)
+            if arguments.ogm_interval:
+                set_ogm_interval(i, arguments.ogm_interval)
 
 
 if __name__ == "__main__":

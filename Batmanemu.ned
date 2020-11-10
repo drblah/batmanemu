@@ -26,7 +26,8 @@ network Batmanemu
 {
     parameters:
         int numHosts;
-        @display("bgb=600,400");
+        @display("bgb=1000,800");
+        
     submodules:
         visualizer: <default("IntegratedMultiCanvasVisualizer")> like IIntegratedVisualizer if hasVisualizer() {
             parameters:
@@ -39,5 +40,7 @@ network Batmanemu
         host[numHosts]: AdhocHost {
             parameters:
                 @display("r=,,#707070;p=300,200");
+                **.pcapFile = "results/host_" + string(index) + ".pcap";
+                
         }
 }

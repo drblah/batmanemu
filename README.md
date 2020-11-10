@@ -27,4 +27,4 @@ For better performance, run the simulation in Cmdenv:
 opp_run -m -u Cmdenv -c <configuration> -n ../..:../../../showcases:../../../src:../../../tutorials --image-path=../../../images -l ../../../src/INET --cmdenv-express-mode=true --cmdenv-performance-display=true omnetpp.ini
 ```
 
-Where <configuration> is the desired configuration specified in the ini file.
+Where \<configuration\> is the desired configuration specified in the ini file.

@@ -1,6 +1,9 @@
 import os
 import argparse
 import string
+import subprocess
+
+from pyroute2 import NetNS, netns
 
 
 def create_namespace(id):
@@ -66,6 +69,51 @@ def set_ogm_interval(id, interval):
         exit()
 
 
+def extract_attr_value(if_attrs, keyname):
+    for attr in if_attrs:
+        if attr[0] == keyname:
+            return attr[1]
+
+def get_mac_addr(host, dev):
+
+    with NetNS(host) as ns:
+        links = ns.get_links()
+
+        for l in links:
+            # If the device name matches the one we are looking for
+            if extract_attr_value(l['attrs'], 'IFLA_IFNAME') == dev:
+                # return the mac address
+                return extract_attr_value(l['attrs'], 'IFLA_ADDRESS')
+
+
+def get_ip_addr(host, dev):
+
+    with NetNS(host) as ns:
+        addrs = ns.get_addr()
+
+        for addr in addrs:
+            # If the device name matches the one we are looking for
+            if extract_attr_value(addr['attrs'], 'IFA_LABEL') == dev:
+                # return the IP address
+                return extract_attr_value(addr['attrs'], 'IFA_ADDRESS')
+
+def create_static_arp():
+    arp_table = []
+
+    # Populate our static arp table
+    for ns in netns.listnetns():
+        arp_table.append({ "host": ns,
+                          "mac": get_mac_addr(ns, 'bat0'),
+                          "ip": get_ip_addr(ns, 'bat0') })
+
+    # Assign it to all hosts. Skip self.
+    for ns in netns.listnetns():
+        for arp in arp_table:
+            if arp["host"] != ns:
+                os.system("ip netns exec {} arp -s {} {}".format( ns, arp['ip'], arp['mac'] ))
+
+
+
 def cleanup():
     stream = os.popen('ip netns')
 
@@ -100,6 +148,7 @@ def main():
     parser.add_argument('--batv', action='store_true', default=False)
     parser.add_argument('--hop_penalty', action='store', type=int)
     parser.add_argument('--ogm_interval', action='store', type=int)
+    parser.add_argument('--static_arp', action='store_true', default=False)
 
     arguments = parser.parse_args()
 
@@ -127,6 +176,8 @@ def main():
             if arguments.ogm_interval:
                 set_ogm_interval(i, arguments.ogm_interval)
 
+        if arguments.static_arp:
+            create_static_arp()
 
 if __name__ == "__main__":
     main()

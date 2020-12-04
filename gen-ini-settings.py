@@ -27,8 +27,8 @@ def make_config(xsize, ysize, runTime):
 
 def main():
     parser = argparse.ArgumentParser(description='Generate ini config.')
-    parser.add_argument('--xsize', action='store', type=int)
-    parser.add_argument('--ysize', action='store', type=int)
+    parser.add_argument('--xsize', action='store', type=int, default=1)
+    parser.add_argument('--ysize', action='store', type=int, default=1)
     parser.add_argument('--run_time', action='store', type=str)
 
     arguments = parser.parse_args()

@@ -113,6 +113,26 @@ def create_static_arp():
                 os.system("ip netns exec {} arp -s {} {}".format( ns, arp['ip'], arp['mac'] ))
 
 
+# Configure a node as a gateway server or client
+def set_gateway_mode(host, mode):
+    if (mode == "server"):
+        result = os.system("ip netns exec {} batctl gw_mode server".format(host))
+
+        if result != 0:
+            print("Failed to set gateway mode {} for host: {}".format(mode, host))
+            exit()
+
+    elif (mode == "client"):
+        result = os.system("ip netns exec {} batctl gw_mode client".format(host))
+
+        if result != 0:
+            print("Failed to set gateway mode {} for host: {}".format(mode, host))
+            exit()
+
+    else:
+        print("Error: Unknown gateway mode! Exiting")
+        exit()
+
 
 def cleanup():
     stream = os.popen('ip netns')
@@ -149,8 +169,14 @@ def main():
     parser.add_argument('--hop_penalty', action='store', type=int)
     parser.add_argument('--ogm_interval', action='store', type=int)
     parser.add_argument('--static_arp', action='store_true', default=False)
+    parser.add_argument('--gateway', nargs="+")
+    parser.add_argument('--verbose', action='store_true', default=False)
 
     arguments = parser.parse_args()
+
+
+    
+        
 
     if arguments.cleanup:
         print("Cleaning up...")
@@ -173,11 +199,27 @@ def main():
 
             if arguments.hop_penalty:
                 set_hop_penalty(i, arguments.hop_penalty)
+            
             if arguments.ogm_interval:
                 set_ogm_interval(i, arguments.ogm_interval)
 
         if arguments.static_arp:
             create_static_arp()
+
+        if arguments.gateway:
+            # set servers
+            for gw in arguments.gateway:
+                if arguments.verbose:
+                    print("Setting {} as server".format(gw))
+                set_gateway_mode(gw, 'server')
+
+            # set clients
+            for ns in netns.listnetns():
+                if ns not in arguments.gateway:
+                    if arguments.verbose:
+                        print("Setting {} as client".format(ns))
+                    set_gateway_mode(ns, 'client')
+
 
 if __name__ == "__main__":
     main()

@@ -76,26 +76,47 @@ def extract_attr_value(if_attrs, keyname):
 
 def get_mac_addr(host, dev):
 
-    with NetNS(host) as ns:
-        links = ns.get_links()
+    cmd = 'ip netns exec {} ip addr show dev {} | grep link/ether'.format(host, dev)
 
-        for l in links:
-            # If the device name matches the one we are looking for
-            if extract_attr_value(l['attrs'], 'IFLA_IFNAME') == dev:
-                # return the mac address
-                return extract_attr_value(l['attrs'], 'IFLA_ADDRESS')
+    result = subprocess.run( ['sh', '-c', cmd], capture_output=True, check=True)
+
+    stripped = result.stdout.decode('UTF-8').strip()
+
+    mac = stripped.split(" ")[1]
+
+    return mac
+
+#    with NetNS(host) as ns:
+#        links = ns.get_links()
+#
+#        for l in links:
+#            # If the device name matches the one we are looking for
+#            if extract_attr_value(l['attrs'], 'IFLA_IFNAME') == dev:
+#                # return the mac address
+#                return extract_attr_value(l['attrs'], 'IFLA_ADDRESS')
 
 
 def get_ip_addr(host, dev):
 
-    with NetNS(host) as ns:
-        addrs = ns.get_addr()
+    cmd = 'ip netns exec {} ip addr show dev {} | grep "inet "'.format(host, dev)
 
-        for addr in addrs:
-            # If the device name matches the one we are looking for
-            if extract_attr_value(addr['attrs'], 'IFA_LABEL') == dev:
-                # return the IP address
-                return extract_attr_value(addr['attrs'], 'IFA_ADDRESS')
+    result = subprocess.run( ['sh', '-c', cmd], capture_output=True, check=True)
+
+    stripped = result.stdout.decode('UTF-8').strip()
+
+    # Get only IP address
+    ip = stripped.split(" ")[1].split("/")[0]
+
+    return ip
+
+#    with NetNS(host) as ns:
+#        addrs = ns.get_addr()
+#
+#        for addr in addrs:
+#            # If the device name matches the one we are looking for
+#            if extract_attr_value(addr['attrs'], 'IFA_LABEL') == dev:
+#                # return the IP address
+#                return extract_attr_value(addr['attrs'], 'IFA_ADDRESS')
 
 def create_static_arp():
     arp_table = []

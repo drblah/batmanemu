@@ -42,7 +42,7 @@ def set_dev_ip(host, dev, ip):
         exit()
 
 
-def create_batman_interface(host, tap, bat, ip):
+def create_batman_interface(host, tap, bat, ip=None):
     result = os.system("ip netns exec {} batctl if add {}".format(host, tap))
 
     if result != 0:
@@ -55,11 +55,12 @@ def create_batman_interface(host, tap, bat, ip):
         print("Failed to UP BAT interface for host: {} on dev: {}. Aborting!".format(host, bat))
         exit()
 
-    result = os.system("ip netns exec {} ip addr add {}/16 dev {}".format(host, ip, bat))
+    if ip:
+        result = os.system("ip netns exec {} ip addr add {}/16 dev {}".format(host, ip, bat))
 
-    if result != 0:
-        print("Failed to assign IP to interface for host: {} to dev: {}. Aborting!".format(host, bat))
-        exit()
+        if result != 0:
+            print("Failed to assign IP to interface for host: {} to dev: {}. Aborting!".format(host, bat))
+            exit()
 
 
 def set_hop_penalty(host, bat, penalty):
@@ -171,8 +172,91 @@ def set_gateway_mode(host, mode):
         exit()
 
 
-def create_gw_router(host, gw_ip):
-    pass
+def create_veth(inside, outside):
+    result = os.system("ip link add {} type veth peer name {}".format(inside, outside))
+
+    if result != 0:
+        print("Failed to create veth: {} - {}. Aborting".format(inside, outside))
+        exit()
+
+
+def create_bridge(bridge_name):
+    result = os.system("ip link add name {} type bridge".format(bridge_name))
+
+    if result != 0:
+        print("Failed to create bridge: {}. Aborting.".format(bridge_name))
+        exit()
+
+    result = os.system("ip link set {} up".format(bridge_name))
+
+    if result != 0:
+        print("Failed to set {} up".format(bridge_name))
+        exit()
+
+def connect_veth(a, location, b):
+    result = os.system("ip link set dev {} {} {}".format(a, location, b))
+
+    if result != 0:
+        print("Failed to link {} and {} through {}".format(a, b, location))
+        exit()
+
+    #result = os.system("ip link set {} up".format(a))
+
+    #if result != 0:
+    #    print("Failed to set link {} up".format(a))
+    #    exit()
+
+
+def set_link_up(dev, namespace=None):
+    if not namespace:
+        result = os.system("ip link set {} up".format(dev))
+
+        if result != 0:
+            print("Failed to set link {} up".format(dev))
+            exit()
+
+    else:
+        result = os.system("ip netns exec {} ip link set dev {} up".format(namespace, dev))
+
+        if result != 0:
+            print("Failed to set link {} up in namespace {}".format(dev, namespace))
+            exit()
+
+
+def create_gw_router(host, gateways, gw_ip):
+    gw_inside = "gw_inside"
+    gw_outside = "gw_outside"
+    bat = "bat0"
+    bridge = "gw_bridge"
+    print("GW namespace: ", host)
+    create_namespace(host)
+    
+    create_bridge(bridge)
+    set_link_up(bridge)
+
+    create_veth(gw_inside, gw_outside)
+    connect_veth(gw_inside, "netns", host)
+    set_link_up(gw_inside, host)
+
+    connect_veth(gw_outside, "master", bridge)
+    set_link_up(gw_outside)
+
+    create_batman_interface(host, gw_inside, bat, gw_ip)
+
+    # Connect gateways to bridge device
+    for gw in gateways:
+        inside = "{}_inside".format(gw)
+        outside = "{}_outside".format(gw)
+
+        create_veth(inside, outside)
+        connect_veth(inside, "netns", gw)
+        set_link_up(inside, gw)
+
+        connect_veth(outside, "master", bridge)
+        set_link_up(outside)
+
+        create_batman_interface(gw, inside, "bat0") # These devices are not assigned an IP.
+
 
 def ip_pool_generator():
     for i in range(1, 254):
@@ -192,11 +276,14 @@ def cleanup():
     
     for h in hosts:
         # destroy network namespaces
-        result = os.system("ip netns del {}".format(h))
+        result = os.system("ip netns del {}".format(h.split(" ")[0].strip()))
 
         if result != 0:
             print("Failed to remove namespace: {}".format(h))
             exit()
+
+    # TODO: Do this gateway cleanup more intelligently
+    os.system("ip link del gw_bridge")
 
 
 def main():
@@ -245,12 +332,9 @@ def main():
             if arguments.ogm_interval:
                 set_ogm_interval(name, bat, arguments.ogm_interval)
 
-        if arguments.static_arp:
-            create_static_arp()
-
         if arguments.gateway:
             # setup "GW router"
-
+            create_gw_router("gwrouter0", arguments.gateway, GW_IP)
 
             # set servers
             for gw in arguments.gateway:
@@ -264,6 +348,9 @@ def main():
                     if arguments.verbose:
                         print("Setting {} as client".format(ns))
                     set_gateway_mode(ns, 'client')
+
+        if arguments.static_arp:
+            create_static_arp()
 
 
 if __name__ == "__main__":

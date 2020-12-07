@@ -6,31 +6,31 @@ import subprocess
 from pyroute2 import NetNS, netns
 
 
-def create_namespace(id):
-    result = os.system("ip netns add host{}".format(id))
+def create_namespace(host):
+    result = os.system("ip netns add {}".format(host))
 
     if result != 0:
-        print("Failed to create namespace for id: {}. Aborting!".format(id))
+        print("Failed to create namespace: {}. Aborting!".format(host))
         exit()
 
 
-def create_TAP(id):
-    result = os.system("ip netns exec host{} ip tuntap add mode tap dev tap{}".format(id, id))
+def create_TAP(host, tap):
+    result = os.system("ip netns exec {} ip tuntap add mode tap dev {}".format(host, tap))
 
     if result != 0:
-        print("Failed to create TAP for id: {}. Aborting!".format(id))
+        print("Failed to create TAP: {} on host: {}. Aborting!".format(tap, host))
         exit()
 
-    result = os.system("ip netns exec host{} ip link set dev tap{} mtu 1560".format(id, id))
+    result = os.system("ip netns exec {} ip link set dev {} mtu 1560".format(host, tap))
 
     if result != 0:
-        print("Failed to set mtu for id: {}. Aborting!".format(id))
+        print("Failed to set mtu on TAP: {} on host: {}. Aborting!".format(tap, host))
         exit()
 
-    result = os.system("ip netns exec host{} ip link set dev tap{} up".format(id, id))
+    result = os.system("ip netns exec {} ip link set dev {} up".format(host, tap))
 
     if result != 0:
-        print("Failed to UP TAP for id: {}. Aborting!".format(id))
+        print("Failed to UP TAP: {} on host {}. Aborting!".format(tap, host))
         exit()
 
 
@@ -42,38 +42,38 @@ def set_dev_ip(host, dev, ip):
         exit()
 
 
-def create_batman_interface(id):
-    result = os.system("ip netns exec host{} batctl if add tap{}".format(id, id))
+def create_batman_interface(host, tap, bat, ip):
+    result = os.system("ip netns exec {} batctl if add {}".format(host, tap))
 
     if result != 0:
-        print("Failed to create BAT interface for id: {}. Aborting!".format(id))
+        print("Failed to create BAT interface for host: {} on dev: {}. Aborting!".format(host, tap))
         exit()
 
-    result = os.system("ip netns exec host{} ip link set dev bat0 up".format(id))
+    result = os.system("ip netns exec {} ip link set dev {} up".format(host, bat))
 
     if result != 0:
-        print("Failed to UP BAT interface for id: {}. Aborting!".format(id))
+        print("Failed to UP BAT interface for host: {} on dev: {}. Aborting!".format(host, bat))
         exit()
 
-    result = os.system("ip netns exec host{} ip addr add 192.168.2.{}/16 dev bat0".format(id, id+1))
+    result = os.system("ip netns exec {} ip addr add {}/16 dev {}".format(host, ip, bat))
 
     if result != 0:
-        print("Failed to assign IP to interface for id: {}. Aborting!".format(id))
+        print("Failed to assign IP to interface for host: {} to dev: {}. Aborting!".format(host, bat))
         exit()
 
 
-def set_hop_penalty(id, penalty):
-    result = os.system("ip netns exec host{} batctl meshif bat0 hop_penalty {}".format(id, penalty))
+def set_hop_penalty(host, bat, penalty):
+    result = os.system("ip netns exec {} batctl meshif {} hop_penalty {}".format(host, bat, penalty))
 
     if result !=0:
-        print("Failed to set hop penalty for id: {}. Aborting!".format(id))
+        print("Failed to set hop penalty for host: {} on dev {}. Aborting!".format(host, bat))
         exit()
 
-def set_ogm_interval(id, interval):
-    result = os.system("ip netns exec host{} batctl meshif bat0 orig_interval {}".format(id, interval))
+def set_ogm_interval(host, bat, interval):
+    result = os.system("ip netns exec {} batctl meshif {} orig_interval {}".format(host, bat, interval))
 
     if result !=0:
-        print("Failed to set ogm interval for id: {}. Aborting!".format(id))
+        print("Failed to set ogm interval for host: {} on dev {}. Aborting!".format(host, bat))
         exit()
 
 
@@ -174,6 +174,13 @@ def set_gateway_mode(host, mode):
 def create_gw_router(host, gw_ip):
     pass
 
+def ip_pool_generator():
+    for i in range(1, 254):
+        yield "192.168.2.{}".format(i)
+
+    print("Out of ip addresses! Aborting")
+    exit()
+
 def cleanup():
     stream = os.popen('ip netns')
 
@@ -207,7 +214,7 @@ def main():
 
     GW_IP = "192.168.3.1"
     
-        
+    ip_pool = ip_pool_generator()
 
     if arguments.cleanup:
         print("Cleaning up...")
@@ -224,15 +231,19 @@ def main():
             os.system("batctl ra BATMAN_IV")
 
         for i in range(0, arguments.nhosts):
-            create_namespace(i)
-            create_TAP(i)
-            create_batman_interface(i)
+            name = "host{}".format(i)
+            tap = "tap{}".format(i)
+            bat = "bat0"
+            ip = next(ip_pool)
+            create_namespace(name)
+            create_TAP(name, tap)
+            create_batman_interface(name, tap, bat, ip)
 
             if arguments.hop_penalty:
-                set_hop_penalty(i, arguments.hop_penalty)
+                set_hop_penalty(name, bat, arguments.hop_penalty)
             
             if arguments.ogm_interval:
-                set_ogm_interval(i, arguments.ogm_interval)
+                set_ogm_interval(name, bat, arguments.ogm_interval)
 
         if arguments.static_arp:
             create_static_arp()

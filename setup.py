@@ -34,6 +34,14 @@ def create_TAP(id):
         exit()
 
 
+def set_dev_ip(host, dev, ip):
+    result = os.system("ip netns exec {} ip addr add {}/16 dev {}".format(host, dev, ip))
+
+    if result != 0:
+        print("Failed to assign IP to interface for id: {}. Aborting!".format(id))
+        exit()
+
+
 def create_batman_interface(id):
     result = os.system("ip netns exec host{} batctl if add tap{}".format(id, id))
 
@@ -47,7 +55,7 @@ def create_batman_interface(id):
         print("Failed to UP BAT interface for id: {}. Aborting!".format(id))
         exit()
 
-    result = os.system("ip netns exec host{} ip addr add 192.168.2.{}/24 dev bat0".format(id, id+1))
+    result = os.system("ip netns exec host{} ip addr add 192.168.2.{}/16 dev bat0".format(id, id+1))
 
     if result != 0:
         print("Failed to assign IP to interface for id: {}. Aborting!".format(id))
@@ -73,6 +81,7 @@ def extract_attr_value(if_attrs, keyname):
     for attr in if_attrs:
         if attr[0] == keyname:
             return attr[1]
+
 
 def get_mac_addr(host, dev):
 
@@ -134,6 +143,13 @@ def create_static_arp():
                 os.system("ip netns exec {} arp -s {} {}".format( ns, arp['ip'], arp['mac'] ))
 
 
+def set_default_gateway(host, gw_ip):
+    result = os.system("ip netns exec {} ip route add default via {}".format(host, gw_ip))
+
+    if result != 0:
+        print("Error assigning default GW for {} where GW_IP: {}".format(host, gw_ip))
+
+
 # Configure a node as a gateway server or client
 def set_gateway_mode(host, mode):
     if (mode == "server"):
@@ -155,6 +171,9 @@ def set_gateway_mode(host, mode):
         exit()
 
 
+def create_gw_router(host, gw_ip):
+    pass
+
 def cleanup():
     stream = os.popen('ip netns')
 
@@ -165,20 +184,11 @@ def cleanup():
         print(h.strip())
     
     for h in hosts:
-        id = int(h.strip(string.ascii_letters))
-        
-        # destroy TAP interfaces
-        result = os.system("ip netns exec host{} ip tuntap del mode tap dev tap{}".format(id, id))
-
-        if result != 0:
-            print("Failed to remove TAP interface for id: {}".format(id))
-            exit()
-
         # destroy network namespaces
-        result = os.system("ip netns del host{}".format(id))
+        result = os.system("ip netns del {}".format(h))
 
         if result != 0:
-            print("Failed to remove namespace for id: {}".format(id))
+            print("Failed to remove namespace: {}".format(h))
             exit()
 
 
@@ -195,7 +205,7 @@ def main():
 
     arguments = parser.parse_args()
 
-
+    GW_IP = "192.168.3.1"
     
         
 
@@ -228,12 +238,15 @@ def main():
             create_static_arp()
 
         if arguments.gateway:
+            # setup "GW router"
+
+
             # set servers
             for gw in arguments.gateway:
                 if arguments.verbose:
                     print("Setting {} as server".format(gw))
                 set_gateway_mode(gw, 'server')
-
+                
             # set clients
             for ns in netns.listnetns():
                 if ns not in arguments.gateway:
